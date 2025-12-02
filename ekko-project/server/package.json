@@ -1,0 +1,38 @@
+{
+  "name": "ekko-server",
+  "version": "2.0.0",
+  "description": "Ekko API Server - Production Ready",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.940.0",
+    "@aws-sdk/s3-request-presigner": "^3.940.0",
+    "@supabase/supabase-js": "^2.86.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "ekko",
+    "api",
+    "express",
+    "supabase",
+    "cloudflare-r2"
+  ],
+  "author": "Ekko Team",
+  "license": "MIT"
+}
