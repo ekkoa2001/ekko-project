@@ -13,7 +13,9 @@
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^7.9.6"
+    "react-helmet-async": "^2.0.5",
+    "react-router-dom": "^7.9.6",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",

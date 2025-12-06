@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingCart, RefreshCcw, Book, PlusCircle, Trash2, Edit, X, Users } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, RefreshCcw, Book, PlusCircle, Trash2, Edit, X, Users, Settings, Activity, Globe, Clock, MousePointer, TrendingUp } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import DOMPurify from 'dompurify';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
+import { scaleLinear } from 'd3-scale';
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+const GEO_URL = "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
 
 // --- 课程编辑/新增模态框 ---
 const CourseModal = ({ isOpen, onClose, onSave, course }) => {
@@ -17,7 +24,7 @@ const CourseModal = ({ isOpen, onClose, onSave, course }) => {
       setFormData(course);
       setImagePreview(course.image || '');
     } else {
-      setFormData({ title: '', price: '', category: '', description: '', image: '' });
+      setFormData({ title: '', price: '', original_price: '', category: '', description: '', image: '' });
       setImagePreview('');
     }
   }, [course]);
@@ -55,10 +62,10 @@ const CourseModal = ({ isOpen, onClose, onSave, course }) => {
 
     try {
       const formDataUpload = new FormData();
-      formDataUpload.append('image', file);
+      formDataUpload.append('file', file);
 
-      const token = localStorage.getItem('adminToken') || 'demo-token';
-      const response = await fetch(`${API_URL}/upload/image`, {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch(`${API_URL}/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -69,7 +76,8 @@ const CourseModal = ({ isOpen, onClose, onSave, course }) => {
       const data = await response.json();
 
       if (data.success) {
-        const imageUrl = `http://localhost:3001${data.data.url}`;
+        // The server returns the full public URL in data.url
+        const imageUrl = data.url;
         setFormData(prev => ({ ...prev, image: imageUrl }));
         setImagePreview(imageUrl);
         alert('图片上传成功！');
@@ -105,6 +113,11 @@ const CourseModal = ({ isOpen, onClose, onSave, course }) => {
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">价格（元）</label>
             <input name="price" value={formData.price || ''} onChange={handleChange} placeholder="例如：299" type="number" className="w-full p-2 border rounded" required />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">原价 (可选，用于展示划线价)</label>
+            <input name="original_price" value={formData.original_price || ''} onChange={handleChange} placeholder="例如：599" type="number" className="w-full p-2 border rounded" />
           </div>
           
           <div>
@@ -154,7 +167,7 @@ const CourseModal = ({ isOpen, onClose, onSave, course }) => {
           
           <div className="flex justify-end gap-4 pt-4">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-slate-200 hover:bg-slate-300">取消</button>
-            <button type="submit" disabled={uploading} className="px-4 py-2 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50">
+            <button type="submit" disabled={uploading} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-blue-900/20">
               {uploading ? '上传中...' : '保存'}
             </button>
           </div>
@@ -279,7 +292,7 @@ const CourseManager = ({ courses, onRefresh, onDelete, onEdit }) => {
     <div className="bg-white rounded-xl shadow-sm">
       <div className="p-6 border-b border-slate-100 flex justify-between items-center">
         <h3 className="font-bold text-xl flex items-center gap-2"><Book size={20} /> 课程管理</h3>
-        <button onClick={() => onEdit(null)} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold hover:bg-slate-800 transition-colors">
+        <button onClick={() => onEdit(null)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/20">
           <PlusCircle size={16} /> 新增课程
         </button>
       </div>
@@ -315,9 +328,383 @@ const CourseManager = ({ courses, onRefresh, onDelete, onEdit }) => {
 };
 
 
+// --- 网站设置组件 ---
+const SiteSettings = () => {
+  const [config, setConfig] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_URL}/config`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setConfig(data.data);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setConfig(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleImageUpload = async (e, key) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('adminToken');
+
+    try {
+      const response = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await response.json();
+      if (data.success) {
+        setConfig(prev => ({ ...prev, [key]: data.url }));
+        alert('图片上传成功');
+      } else {
+        alert('上传失败: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('上传出错');
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const token = localStorage.getItem('adminToken');
+    try {
+      const response = await fetch(`${API_URL}/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(config)
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('设置保存成功');
+      } else {
+        alert('保存失败: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('保存出错');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div>加载中...</div>;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6 max-w-4xl">
+      <h3 className="font-bold text-xl mb-6 flex items-center gap-2"><Settings size={20} /> 网站设置</h3>
+      
+      <div className="space-y-6">
+        {/* 基本设置 */}
+        <div>
+          <h4 className="font-bold text-lg mb-4 border-b pb-2">基本信息</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">网站标题 (Site Title)</label>
+              <input name="site_title" value={config.site_title || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">联系邮箱</label>
+              <input name="contact_email" value={config.contact_email || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-slate-700 mb-2">网站描述 (SEO)</label>
+              <textarea name="site_description" value={config.site_description || ''} onChange={handleChange} className="w-full p-2 border rounded h-24" />
+            </div>
+          </div>
+        </div>
+
+        {/* 首页设置 */}
+        <div>
+          <h4 className="font-bold text-lg mb-4 border-b pb-2">首页设置 (Hero Section)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Hero 标题</label>
+              <input name="hero_title" value={config.hero_title || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+            </div>
+             <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Hero 副标题</label>
+              <input name="hero_subtitle" value={config.hero_subtitle || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+            </div>
+          </div>
+        </div>
+
+        {/* 图片设置 */}
+        <div>
+          <h4 className="font-bold text-lg mb-4 border-b pb-2">图片资源</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">网站 Logo</label>
+              <div className="flex items-center gap-4">
+                {config.site_logo && <img src={config.site_logo} alt="Logo" className="h-12 w-12 object-contain border rounded bg-slate-50" />}
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'site_logo')} className="text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">首页 Banner</label>
+              <div className="space-y-2">
+                {config.hero_banner_url && <img src={config.hero_banner_url} alt="Banner" className="w-full h-32 object-cover border rounded" />}
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'hero_banner_url')} className="text-sm" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 border-t flex justify-end">
+          <button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-blue-900/20">
+            {saving ? '保存中...' : '保存所有设置'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// --- 统计分析组件 ---
+const AnalyticsDashboard = ({ data }) => {
+  if (!data) return <div className="p-12 text-center text-slate-500">加载数据中...</div>;
+
+  const { pv, uv, avgDuration, bounceRate, conversionRate, mapData, timeData, deviceData } = data;
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 text-slate-500 mb-2"><Activity size={18} /> 访问量 (PV)</div>
+          <div className="text-3xl font-black text-slate-900">{pv}</div>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 text-slate-500 mb-2"><Users size={18} /> 访客数 (UV)</div>
+          <div className="text-3xl font-black text-slate-900">{uv}</div>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 text-slate-500 mb-2"><Clock size={18} /> 平均停留</div>
+          <div className="text-3xl font-black text-slate-900">{avgDuration}s</div>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 text-slate-500 mb-2"><MousePointer size={18} /> 跳出率</div>
+          <div className="text-3xl font-black text-slate-900">{bounceRate}%</div>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-3 text-slate-500 mb-2"><TrendingUp size={18} /> 转化率</div>
+          <div className="text-3xl font-black text-slate-900">{conversionRate}%</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Time Distribution Chart */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <h3 className="font-bold text-lg mb-6">访问时间分布 (24h)</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={timeData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="hour" tickFormatter={h => `${h}:00`} />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="visits" stroke="#2563eb" strokeWidth={3} dot={false} activeDot={{ r: 8 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Device Distribution Pie */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <h3 className="font-bold text-lg mb-6">设备分布</h3>
+          <div className="h-64 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={deviceData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {deviceData && deviceData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* World Map */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+        <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><Globe size={20} /> 访客地理分布</h3>
+        <div className="h-96 bg-slate-50 rounded-lg overflow-hidden relative">
+           <ResponsiveContainer width="100%" height="100%">
+             <ComposableMap projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}>
+               <ZoomableGroup>
+                 <Geographies geography={GEO_URL}>
+                   {({ geographies }) =>
+                     geographies.map((geo) => {
+                        const countryName = geo.properties.name;
+                        // Check if we have visits from this country
+                        const hasVisits = mapData && mapData.find(d => d.name === countryName || (d.name === 'United States' && countryName === 'United States of America'));
+                        
+                       return (
+                         <Geography
+                           key={geo.rsmKey}
+                           geography={geo}
+                           fill={hasVisits ? "#3b82f6" : "#D6D6DA"}
+                           stroke="#FFFFFF"
+                           strokeWidth={0.5}
+                           style={{
+                             default: { outline: "none" },
+                             hover: { fill: "#1d4ed8", outline: "none" },
+                             pressed: { fill: "#1e3a8a", outline: "none" },
+                           }}
+                           title={countryName}
+                         />
+                       );
+                     })
+                   }
+                 </Geographies>
+               </ZoomableGroup>
+             </ComposableMap>
+           </ResponsiveContainer>
+           <div className="absolute bottom-4 right-4 bg-white/90 p-2 rounded text-xs shadow">
+             * 地图数据基于 GeoIP
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// --- 登录组件 ---
+const Login = ({ onLogin }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.user.role !== 'admin') {
+          setError('权限不足：非管理员账号');
+          return;
+        }
+        localStorage.setItem('adminToken', data.token);
+        localStorage.setItem('adminUser', JSON.stringify(data.user));
+        onLogin(data.token);
+      } else {
+        setError(data.message || '登录失败');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('网络错误，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-black text-slate-900">Ekko Admin</h1>
+          <p className="text-slate-500 mt-2">请登录以继续</p>
+        </div>
+        
+        {error && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">邮箱</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="admin@ekko.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">密码</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {loading ? '登录中...' : '立即登录'}
+          </button>
+          <button 
+            type="button"
+            onClick={() => {
+                localStorage.setItem('adminToken', 'dev-bypass-token');
+                localStorage.setItem('adminUser', JSON.stringify({ id: 'dev-admin-id', email: 'dev@admin.com', role: 'admin' }));
+                onLogin('dev-bypass-token');
+            }}
+            className="w-full bg-slate-200 text-slate-800 py-3 rounded-lg font-bold hover:bg-slate-300 transition-colors mt-3"
+          >
+            访客模式 (免密进入)
+          </button>
+        </form>
+        <div className="mt-6 text-center text-xs text-slate-400">
+          默认账号: admin@ekko.com / admin123
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function AdminApp() {
+  const [token, setToken] = useState(localStorage.getItem('adminToken'));
   const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState({ totalSales: 0, orderCount: 0 });
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [orders, setOrders] = useState([]);
   const [courses, setCourses] = useState([]);
   const [users, setUsers] = useState([]);
@@ -328,18 +715,40 @@ export default function AdminApp() {
   const [isUserDetailOpen, setIsUserDetailOpen] = useState(false);
   
   const refreshData = () => {
-    const token = localStorage.getItem('adminToken') || 'demo-token';
+    if (!token) return;
+    
     const headers = {
       'Authorization': `Bearer ${token}`
     };
     
-    fetch(`${API_URL}/admin/stats`, { headers }).then(res => res.json()).then(res => res.success && setStats(res.data)).catch(err => console.error(err));
+    fetch(`${API_URL}/admin/stats`, { headers }).then(res => res.json()).then(res => {
+       if (res.success) setStats(res.data);
+       else if (res.status === 401) handleLogout();
+    }).catch(err => console.error(err));
+
+    fetch(`${API_URL}/admin/analytics?range=today`, { headers }).then(res => res.json()).then(res => {
+       if (res.success) setAnalyticsData(res.data);
+    }).catch(err => console.error(err));
+    
     fetch(`${API_URL}/admin/orders`, { headers }).then(res => res.json()).then(res => res.success && setOrders(res.data)).catch(err => console.error(err));
     fetch(`${API_URL}/admin/courses`, { headers }).then(res => res.json()).then(res => res.success && setCourses(res.data)).catch(err => console.error(err));
     fetch(`${API_URL}/admin/users`, { headers }).then(res => res.json()).then(res => res.success && setUsers(res.data)).catch(err => console.error(err));
   };
 
-  useEffect(() => { refreshData(); }, []);
+  useEffect(() => { 
+    if (token) refreshData(); 
+  }, [token]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+    setToken(null);
+  };
+
+  if (!token) {
+    return <Login onLogin={setToken} />;
+  }
+
 
   const handleRefund = (orderId) => {
     if(!confirm('确定退款吗？')) return;
@@ -486,36 +895,44 @@ export default function AdminApp() {
         orders={selectedUser?.orders}
       />
       <div className="flex min-h-screen bg-slate-100 font-sans text-slate-800">
-        <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col p-6">
-          <h1 className="text-2xl font-black text-white mb-8">Ekko Admin</h1>
-          <div className="space-y-2">
-            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><LayoutDashboard size={20}/> 控制台</button>
-            <button onClick={() => setView('courses')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${view === 'courses' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Book size={20}/> 课程管理</button>
-            <button onClick={() => setView('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${view === 'users' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800'}`}><Users size={20}/> 用户管理</button>
+        <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col p-6 shadow-xl z-10">
+          <div className="flex items-center gap-3 mb-10">
+             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-900/50">E</div>
+             <h1 className="text-xl font-black text-white tracking-tight">Ekko Admin</h1>
+          </div>
+          <div className="space-y-2 flex-1">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider px-4 mb-2">Menu</p>
+            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${view === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}><LayoutDashboard size={18}/> 控制台</button>
+            <button onClick={() => setView('courses')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${view === 'courses' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}><Book size={18}/> 课程管理</button>
+            <button onClick={() => setView('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${view === 'users' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}><Users size={18}/> 用户管理</button>
+            <div className="pt-4"></div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider px-4 mb-2">System</p>
+            <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${view === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 hover:text-white'}`}><Settings size={18}/> 网站设置</button>
+          </div>
+          <div className="mt-auto pt-6 border-t border-slate-800">
+             <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-500/10 text-red-400 hover:text-red-500 transition-colors"><Trash2 size={18}/> 退出登录</button>
           </div>
         </aside>
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 overflow-y-auto bg-slate-50/50">
           {view === 'dashboard' && (
             <>
-              <div className="grid grid-cols-3 gap-6 mb-8">
-                <div className="bg-white p-6 rounded-xl shadow-sm">
-                   <p className="text-slate-500">GMV</p>
-                   <h3 className="text-2xl font-bold">¥{stats.totalSales}</h3>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm">
-                   <p className="text-slate-500">订单数</p>
-                   <h3 className="text-2xl font-bold">{stats.orderCount}</h3>
-                </div>
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-2xl font-bold text-slate-800">数据概览 (今日)</h2>
+                <button onClick={refreshData} className="text-blue-600 flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm hover:shadow hover:bg-blue-50 transition-all">
+                  <RefreshCcw size={16}/> 刷新数据
+                </button>
               </div>
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              
+              <AnalyticsDashboard data={analyticsData} />
+
+              <div className="mt-8 bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between">
-                  <h3 className="font-bold">交易记录</h3>
-                  <button onClick={refreshData} className="text-blue-600 flex items-center gap-1"><RefreshCcw size={14}/> 刷新</button>
+                  <h3 className="font-bold">最新交易记录</h3>
                 </div>
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50"><tr><th className="p-4">ID</th><th className="p-4">课程</th><th className="p-4">用户</th><th className="p-4">金额</th><th className="p-4">状态</th><th className="p-4">操作</th></tr></thead>
                   <tbody>
-                    {orders.map(o => (
+                    {orders.slice(0, 5).map(o => (
                       <tr key={o.id} className="border-t border-slate-50">
                         <td className="p-4 font-mono text-slate-500">{o.id}</td>
                         <td className="p-4">{o.courseTitle}</td>
@@ -605,6 +1022,7 @@ export default function AdminApp() {
               </table>
             </div>
           )}
+          {view === 'settings' && <SiteSettings />}
         </main>
       </div>
     </>

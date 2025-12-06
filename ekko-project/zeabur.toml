@@ -1,0 +1,16 @@
+[[services]]
+name = "server"
+dir = "server"
+command = "node index.js"
+
+[[services]]
+name = "client"
+dir = "client"
+build_command = "npm install && npm run build"
+output_directory = "dist"
+
+[[services]]
+name = "admin"
+dir = "admin"
+build_command = "npm install && npm run build"
+output_directory = "dist"

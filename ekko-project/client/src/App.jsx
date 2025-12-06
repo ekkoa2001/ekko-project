@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Video as VideoIcon, Globe, TrendingUp } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 
 // Components
 import Navbar from './components/Navbar';
+import AnalyticsTracker from './components/AnalyticsTracker';
 import IntroScreen from './components/IntroScreen';
 import AuthModal from './components/AuthModal';
 import PaymentModal from './components/PaymentModal';
@@ -14,8 +16,9 @@ import CourseDetail from './pages/CourseDetail';
 import TopicPage from './pages/TopicPage';
 import AboutPage from './pages/AboutPage';
 
-// API Configuration
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+// Contexts & Utils
+import { useConfig } from './contexts/ConfigContext';
+import { api } from './utils/api';
 
 // Topic configurations
 const TOPIC_CONFIGS = {
@@ -64,24 +67,38 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const navigate = useNavigate();
+  const { config } = useConfig();
+
+  // Check for existing token
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (token && savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Failed to parse user data");
+        localStorage.removeItem('user');
+      }
+    }
+  }, []);
 
   // Fetch courses on mount and refresh periodically
   useEffect(() => {
-    const fetchCourses = () => {
-      fetch(`${API_URL}/courses`)
-        .then(res => res.json())
-        .then(res => {
-          if (res.success) setCourses(res.data);
-        })
-        .catch(err => console.error("连接后端失败", err));
+    const fetchCourses = async () => {
+      try {
+        const res = await api.getCourses();
+        if (res.success) setCourses(res.data);
+      } catch (err) {
+        console.error("Failed to fetch courses:", err);
+      }
     };
 
-    // 初始加载
+    // Initial load
     fetchCourses();
 
-    // 每 30 秒自动刷新一次（可选）
+    // Refresh every 30 seconds
     const interval = setInterval(fetchCourses, 30000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -89,13 +106,18 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
+  const handleLoginSuccess = (data) => {
+    // data expected to be { user: {...}, token: "..." }
+    setUser(data.user);
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
     setShowAuthModal(false);
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     navigate('/');
   };
 
@@ -115,12 +137,17 @@ export default function App() {
   };
 
   const handlePaymentComplete = (orderId) => {
-    alert(`🎉 订阅成功！订单号：${orderId}\n您可以去管理员后台查看订单详情。`);
+    toast.success(`🎉 订阅成功！订单号：${orderId}`, {
+      description: '您可以去管理员后台查看订单详情。',
+      duration: 5000,
+    });
     setShowPaymentModal(false);
   };
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+      <Toaster position="top-center" />
+      <AnalyticsTracker />
       {showIntro && <IntroScreen onComplete={() => setShowIntro(false)} />}
 
       <AuthModal
@@ -168,14 +195,19 @@ export default function App() {
 
         <footer className="bg-white border-t border-slate-100 py-12 mt-20">
           <div className="max-w-7xl mx-auto px-4 text-center text-slate-400 text-sm">
-            <div className="font-bold text-lg text-slate-900 mb-2">Ekko Studio</div>
-            <p className="mb-4">独立出海人，分享最真实的实战经验。</p>
+            <div className="font-bold text-lg text-slate-900 mb-2">
+                {config.site_title || "Ekko Studio"}
+            </div>
+            <p className="mb-4">
+                {config.site_description || "独立出海人，分享最真实的实战经验。"}
+            </p>
             <div className="flex justify-center gap-6 text-xs">
               <button onClick={() => navigate('/about')} className="hover:text-slate-900">关于我</button>
             </div>
           </div>
         </footer>
       </div>
+      <Toaster position="top-center" richColors />
     </div>
   );
 }

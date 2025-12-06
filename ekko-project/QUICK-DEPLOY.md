@@ -16,6 +16,7 @@ git commit -m "Initial commit: Ekko project ready for Zeabur deployment"
 
 # 添加远程仓库（替换 YOUR_USERNAME 为你的 GitHub 用户名）
 git remote add origin https://github.com/YOUR_USERNAME/ekko-project.git
+git remote add origin https://github.com/ekkoa2001/ekko-project.git
 
 # 推送到 GitHub
 git branch -M main

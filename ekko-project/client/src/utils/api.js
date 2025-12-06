@@ -16,7 +16,9 @@ export const handleResponse = async (response) => {
   // Handle token expiration
   if (response.status === 401) {
     localStorage.removeItem('token');
-    window.location.href = '/login';
+    localStorage.removeItem('user');
+    // Optional: Redirect to login or show modal
+    // window.location.href = '/'; 
     throw new Error('认证已过期，请重新登录');
   }
   
@@ -31,7 +33,7 @@ export const handleResponse = async (response) => {
 export const api = {
   // Auth
   register: async (userData) => {
-    const response = await fetch(`${API_URL}/register`, {
+    const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
@@ -40,11 +42,17 @@ export const api = {
   },
 
   login: async (credentials) => {
-    const response = await fetch(`${API_URL}/login`, {
+    const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials)
     });
+    return handleResponse(response);
+  },
+
+  // Config
+  getConfig: async () => {
+    const response = await fetch(`${API_URL}/config`);
     return handleResponse(response);
   },
 
@@ -61,10 +69,27 @@ export const api = {
 
   // Orders
   createOrder: async (orderData) => {
-    const response = await fetch(`${API_URL}/orders/create`, {
+    const response = await fetch(`${API_URL}/orders`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(orderData)
+    });
+    return handleResponse(response);
+  },
+  
+  // Upload
+  uploadFile: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        headers: {
+            ...(token && { 'Authorization': `Bearer ${token}` })
+            // No Content-Type header for FormData, browser sets it with boundary
+        },
+        body: formData
     });
     return handleResponse(response);
   }

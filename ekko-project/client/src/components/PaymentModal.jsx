@@ -3,22 +3,59 @@ import {
   X, Check, MessageCircle, Zap, CreditCard,
   Loader2, Lock, ShieldCheck
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const API_URL = "http://localhost:3001/api";
 
 export default function PaymentModal({ isOpen, onClose, course, user, onPaymentComplete }) {
   const [method, setMethod] = useState('wechat'); // wechat, alipay, card
   const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [couponError, setCouponError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setLoading(false);
       setMethod('wechat');
+      setCouponCode('');
+      setDiscountPercent(0);
+      setCouponError('');
     }
   }, [isOpen]);
 
   if (!isOpen || !course) return null;
+
+  const finalPrice = discountPercent > 0 
+    ? Math.round(course.price * (100 - discountPercent) / 100) 
+    : course.price;
+
+  const verifyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setVerifying(true);
+    setCouponError('');
+    try {
+      const res = await fetch(`${API_URL}/coupons/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponCode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscountPercent(data.data.discount_percent);
+        setCouponError('');
+      } else {
+        setCouponError(data.message || '无效的优惠券');
+        setDiscountPercent(0);
+      }
+    } catch (err) {
+      setCouponError('验证失败，请重试');
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handlePay = async () => {
     setLoading(true);
@@ -34,12 +71,13 @@ export default function PaymentModal({ isOpen, onClose, course, user, onPaymentC
       }
 
       // Request backend to create order
-      const res = await fetch(`${API_URL}/orders/create`, {
+      const res = await fetch(`${API_URL}/orders`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          courseId: course.id,
-          amount: course.price,
+          course_id: course.id,
+          amount: finalPrice,
+          coupon_code: discountPercent > 0 ? couponCode : null,
           paymentMethod: method
         })
       });
@@ -49,16 +87,16 @@ export default function PaymentModal({ isOpen, onClose, course, user, onPaymentC
         // Simulate payment gateway processing
         setTimeout(() => {
           setLoading(false);
-          onPaymentComplete(data.order.id);
+          onPaymentComplete(data.data[0].id); // Supabase returns array
           onClose();
         }, 1500);
       } else {
-        alert('支付失败: ' + (data.message || '未知错误'));
+        toast.error('支付失败: ' + (data.message || '未知错误'));
         setLoading(false);
       }
     } catch (err) {
       console.error('Payment error:', err);
-      alert('网络错误，请检查后端服务是否启动');
+      toast.error('网络错误，请检查后端服务是否启动');
       setLoading(false);
     }
   };
@@ -79,15 +117,42 @@ export default function PaymentModal({ isOpen, onClose, course, user, onPaymentC
 
         <div className="p-6">
           {/* Product info */}
-          <div className="flex gap-4 mb-8 bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
+          <div className="flex gap-4 mb-6 bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
             <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden shrink-0 relative">
               <img src={course.image} className="w-full h-full object-cover" alt="Course" />
             </div>
             <div className="flex flex-col justify-center">
               <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wide bg-blue-50 px-2 py-0.5 rounded-full w-fit mb-1">订阅课程</div>
               <h4 className="font-bold text-slate-900 text-sm leading-tight mb-1 line-clamp-2">{course.title}</h4>
-              <div className="text-lg font-black text-slate-900">¥{course.price}</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-lg font-black text-slate-900">¥{finalPrice}</div>
+                {discountPercent > 0 && (
+                   <div className="text-xs text-slate-400 line-through">¥{course.price}</div>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Coupon Input */}
+          <div className="mb-6">
+             <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="输入优惠码"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button 
+                  onClick={verifyCoupon}
+                  disabled={verifying || !couponCode}
+                  className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {verifying ? '...' : '兑换'}
+                </button>
+             </div>
+             {couponError && <p className="text-red-500 text-xs mt-1">{couponError}</p>}
+             {discountPercent > 0 && <p className="text-green-600 text-xs mt-1 font-bold">已应用 {100 - discountPercent}% 折扣 (减免 {discountPercent}%)</p>}
           </div>
 
           {/* Payment method selection */}

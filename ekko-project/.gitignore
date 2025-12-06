@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store
+.npm
+
+# Production
+dist/
+build/
+out/
+
+# Security
+.env
+.env.*
+!.env.example
+*.pem
+
+# System
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Editor
+.history/
+*.swp
+*.swo
+
+# Supabase
+supabase/functions/*/.env
